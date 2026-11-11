@@ -16,12 +16,9 @@ Explore air quality across Chicago's Open Air Chicago sensor network, from the l
 
 ## Data and methods
 
-The dashboard uses public *Open Air Chicago* datasets from the City of Chicago:
+The dashboard is based on the City's public [Open Air Chicago hourly aggregations](https://data.cityofchicago.org/d/di9s-96ws). An initial historical archive is summarized into sensor-day values; subsequent updates use the same public hourly data source.
 
-- [Daily sensor aggregations](https://data.cityofchicago.org/d/rtmx-vkjr) — historical daily PM₂.₅ and NO₂ measurements.
-- [Hourly sensor aggregations](https://data.cityofchicago.org/d/di9s-96ws) — most recent available hourly readings.
-
-The site uses published, cloud-calibrated measurement fields, not the original raw measurement fields. Daily observations are provider-published **UTC-day averages**, not recalculated Chicago-local daily means. Network summaries average available sensor-day values equally and show reporting counts, since the sensor network can change over time. Location comparisons use common observed dates.
+The site uses cloud-calibrated `_value` readings, not raw measurement fields. Daily observations are **UTC-day means calculated from hourly records**, requiring at least **18 valid hours out of 24** for each sensor and pollutant. These are not Chicago-local daily means. Network summaries average eligible sensor-day values equally and show reporting counts. Location comparisons use common observed dates.
 
 **Interpretation matters:** These are non-regulatory sensor observations. A sensor reading or network average does not establish neighborhood-wide exposure, a health recommendation, an EPA compliance determination, or the cause of pollution.
 
@@ -29,6 +26,6 @@ The site uses published, cloud-calibrated measurement fields, not the original r
 
 Chicago Air Explorer is an independent, open-source data-exploration project. It is **not affiliated with, endorsed by, or operated by** the City of Chicago or the sensor manufacturer.
 
-The website is hosted with GitHub Pages. A GitHub Actions workflow periodically checks the public Chicago datasets and publishes compact JSON snapshots; no visitor account, personal data, or access to a private DuckDB database is required.
+The website is hosted with GitHub Pages. A GitHub Actions workflow periodically checks a small window of the public Chicago hourly data and publishes compact JSON snapshots; no visitor account, personal data, or access to a private DuckDB database is required.
 
 For maintainers and developers, see [Project operations and setup](docs/PROJECT_OPERATIONS.md). The underlying code and methods are available in this repository.
