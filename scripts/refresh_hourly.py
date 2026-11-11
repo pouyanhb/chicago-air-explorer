@@ -96,7 +96,19 @@ def refresh():
         raise RuntimeError("Seed has no eligible days. Not refreshing.")
     now = datetime.now(timezone.utc)
     last_completed = now.date() - timedelta(days=1)
-    start = max(date.fromisoformat(latest) - timedelta(days=BACKTRACK_DAYS), date(2025,9,1))
+    old_manifest_path = DATA_DIR / "manifest.json"
+    old_manifest = json.loads(old_manifest_path.read_text()) if old_manifest_path.exists() else {}
+    scanned_value = old_manifest.get("scanned_through_utc_day")
+    prior_scanned = date.fromisoformat(scanned_value) if scanned_value else None
+    if prior_scanned and prior_scanned >= last_completed:
+        # After catching up, systematically revisit a recent 14-day window.
+        start = last_completed - timedelta(days=13)
+    elif prior_scanned:
+        # Move a bounded window forward, revisiting two days for late revisions.
+        start = prior_scanned - timedelta(days=BACKTRACK_DAYS)
+    else:
+        start = date.fromisoformat(latest) - timedelta(days=BACKTRACK_DAYS)
+    start = max(start, date(2025,9,1))
     end = min(last_completed, start + timedelta(days=MAX_DAYS-1))
     if end < start:
         print("No completed UTC days to refresh yet.")
@@ -105,6 +117,7 @@ def refresh():
     print(f"Hourly incremental update: {start} through {end}; existing daily records: {len(records):,}",flush=True)
     session = client()
     attempted, success, failure = 0, 0, None
+    scanned_through = prior_scanned
     day = start
     while day <= end:
         upper = day + timedelta(days=1)
@@ -133,6 +146,7 @@ def refresh():
                 old["lat"], old["lon"] = lat, lon
             metadata[sid] = old
         success += 1
+        scanned_through = day
         print(f"  {day}: {len(fetched):,} hourly rows; {len(per_sensor)} reporting sensors", flush=True)
         day = upper
 
@@ -179,6 +193,7 @@ def refresh():
                 "daily_records":len(daily["rows"]),
                 "hourly_refresh_error":hourly_error,
                 "daily_refresh_warning":failure,
+                "scanned_through_utc_day":scanned_through.isoformat() if scanned_through else None,
                 "audit":{"hourly_rows_fetched":attempted,"full_days_successful":success},
                 "notes":notes}
     write_json(DATA_DIR/"manifest.json",manifest)
