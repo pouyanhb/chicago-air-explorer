@@ -1,93 +1,70 @@
-# Project operations and setup
+# Chicago Air Explorer — operations guide
 
-This document is for the repository maintainer, not the website's homepage. The public-facing introduction is in the main [README](../README.md).
+This is maintainer documentation; the public project description is in the [README](../README.md).
 
-## How the pieces work
+## What GitHub does
 
-1. GitHub stores the website's source code (in `site/`) and the updater (in `scripts/build_data.py`).
-2. The scheduled [GitHub Actions workflow](../.github/workflows/update-and-deploy.yml) starts a temporary GitHub-hosted computer about every four hours.
-3. That computer requests public data from the City of Chicago's Socrata API.
-4. The script writes **processed, public JSON snapshots** to `site/data/`. It does **not** commit the full raw API response or a DuckDB file.
-5. The workflow commits updated JSON snapshots and deploys the `site/` folder using GitHub Pages.
-6. Visitors' browsers load the static HTML, JavaScript, and JSON. GitHub Pages does not run a Python server.
+The repository holds the static website in `site/`, processing tools in `scripts/`, and **processed public JSON** in `site/data/`. GitHub Pages serves those files. A scheduled GitHub Action checks the City of Chicago API and updates public summaries. No Python server or full DuckDB file is hosted.
 
-### What the updater downloads
+## Initial historical data: one-time import
 
-- **First run / full rebuild:** available *daily sensor aggregates* from September 1, 2025 onward, paginated from the public `rtmx-vkjr` dataset.
-- **Later runs:** the saved daily snapshot is reused; the script re-fetches a **21-day overlap** to capture recent additions or revisions.
-- **Hourly view:** a separate request checks the newest published hour from `di9s-96ws`, then downloads a window covering the previous **72 hours**. This is for the most recent mapped hour and short hourly trends.
+The initial daily dataset comes from the existing Open Air Chicago DuckDB archive. The GitHub repository does **not** contain or read that `air.db`.
 
-The updater writes these files when the requests succeed:
+1. In Google Colab, run the companion `Chicago_Air_Explorer_Export.ipynb` notebook with your private Google Drive mounted.
+2. It downloads the read-only [exporter](../scripts/export_from_duckdb.py), opens `/content/drive/MyDrive/open_air_chicago/air.db` **read-only**, and creates `daily.json`, `recent.json`, and `manifest.json`.
+3. Upload **only those three small files** into this repository's `site/data/` directory (or share the ZIP in ChatGPT for review and GitHub upload). Never upload `air.db`.
+4. Confirm the three files appear in the repository. A push triggers **deployment only**, not another large historical API download.
 
-| File | Purpose |
-| --- | --- |
-| `site/data/daily.json` | Compact daily values, sensor metadata, and derived daily network summaries |
-| `site/data/recent.json` | Compact recent hourly values and a single time-matched map snapshot |
-| `site/data/manifest.json` | Last successful generation timestamp, measurement dates, counts and data-source error information |
+The exporter calculates an **hourly-derived UTC calendar-day mean** for a sensor/pollutant only if at least 18 of that UTC day's 24 hours have valid non-negative numeric readings. PM₂.₅ and NO₂ have separate coverage; missing values are not interpolated or zero-filled. Duplicate sensor-hour keys cause an error to prevent silently biased means. Timestamps are assumed UTC and NO₂ units ppb based on the existing analysis notebook; verify with provider metadata before presenting results as final research.
 
-The public `site/data/*.json` files are visible to everyone on GitHub and through GitHub Pages. This is intentional for the public City aggregates. The workflow is **not** a private long-term data warehouse.
+## Subsequent automated updates
 
-## GitHub settings
+The [workflow](../.github/workflows/update-and-deploy.yml) runs on code pushes and twice per day on a schedule. Code pushes **only deploy the existing site**. Scheduled/manual runs execute [`refresh_hourly.py`](../scripts/refresh_hourly.py), which:
 
-- Repository: `pouyanhb/chicago-air-explorer`
-- **Settings → Pages → Build and deployment → Source:** `GitHub Actions`
-- **Actions → Update Chicago air data and deploy:** open a run to see its status and detailed logs
-- **Actions → Update Chicago air data and deploy → Run workflow:** start an update manually
-- **Settings → Actions → General → Workflow permissions:** permit the workflow's required repository writes
+1. Checks for the initial `site/data/daily.json` seed. If it is missing, exits cleanly without attempting a full download.
+2. Rechecks two prior UTC dates and fetches **up to seven completed UTC days per run**, one day at a time from the City's [public hourly API](https://data.cityofchicago.org/d/di9s-96ws).
+3. Uses exactly the same 18-valid-hour per pollutant UTC-day mean rule as the initial archive export.
+4. Preserves older sensor-days and incorporates newly eligible/revised readings; an API failure stops further daily requests without throwing away already fetched complete days.
+5. Attempts a short recent-hour map update. A failure in that optional request leaves the last valid recent snapshot and records a warning in the manifest.
+6. Commits updated public JSON and deploys the website. The source's own publication delay is not reduced by more frequent polling.
 
-If rate limits become an issue, a Socrata application token can be added as a **GitHub Actions secret** named `SOCRATA_APP_TOKEN`; never place the token in frontend JavaScript.
+Because only seven days are checked per run, it can take several runs to catch up after a long source delay. Older source deletions and corrections outside the overlap are not automatically reconciled. Do not interpret this website as live or a regulatory air-quality warning service.
 
-## Running it locally
+## Output files
 
-To generate data from the public API:
+| File | Contents |
+|---|---|
+| `site/data/daily.json` | Sensor catalog, valid hourly-derived UTC-day concentrations, equally weighted network summaries |
+| `site/data/recent.json` | Most recently accessible 72-hour slice and one time-aligned map snapshot |
+| `site/data/manifest.json` | Data-generation date, latest observed timestamps, record counts, warnings |
+
+These JSON files are **public**. Anyone visiting GitHub or the website can inspect or download them.
+
+## Manual controls
+
+- [Actions page](https://github.com/pouyanhb/chicago-air-explorer/actions): see runs and logs.
+- [Pages configuration](https://github.com/pouyanhb/chicago-air-explorer/settings/pages): deployment source = **GitHub Actions**.
+- The workflow includes a **Run workflow** button for manual refresh after the JSON seed exists.
+- An optional `SOCRATA_APP_TOKEN` GitHub Actions secret may help with API rate limits but will not cure provider HTTP 503 outages.
+
+## Development and testing
 
 ```bash
 python -m pip install -r scripts/requirements.txt
-python scripts/build_data.py
-```
-
-To preview the site (run in a different terminal):
-
-```bash
+python -m unittest discover -s tests -v
+python -m compileall -q scripts
+node --check site/assets/app.js
 python -m http.server 8000 --directory site
 ```
 
-Open http://localhost:8000.
+Open http://localhost:8000 to preview. The old `scripts/build_data.py` is retained as a separate experimental importer for City-published daily aggregates; **do not run it against the hourly-derived production JSON snapshots**, as the methods differ.
 
-To redo the full historical daily download (including removing historical records deleted by the provider):
+## Interpretation limits
 
-```bash
-python scripts/build_data.py --rebuild
-```
+The sensor network is not population-weighted; missingness changes which locations contribute. The descriptive 18-of-24-hour completeness rule is not a substitute for EPA regulatory design-value procedures. Comparisons use matching UTC days; correlation does not identify sources. Site positions use last valid locations and may reflect device relocations. Publication delay and unavailable periods should remain visible.
 
-Run the tests:
+## Why previous runs failed
 
-```bash
-python -m unittest discover -s tests -v
-node --check site/assets/app.js
-python -m compileall -q scripts
-```
+The original workflow tried to download the entire daily-history dataset before committing anything. GitHub Actions logs showed repeated **HTTP 503** responses from the City of Chicago daily aggregation API at offsets 102,500 and 30,000, so the job failed before deployment. This new design separates one-time history export from small updates and separates the website deployment from data-fetch success.
 
-## What happens to `air.db`?
-
-Nothing. The website does **not** use, open, modify, or upload the `air.db` in Google Drive. Keep it backed up outside the public repository; do not commit it. Your Colab archive and this website's public-source snapshots are independent and may differ due to upstream corrections, retrieval dates, and daily aggregation definitions.
-
-## Methodology and cautions
-
-- Daily source values are published **UTC-day** summaries. The site does not reconstruct Chicago-local daily means from hourly readings. Hourly timestamps are shown in Chicago local time in the interface.
-- Per-day network summaries average available sensor measurements equally, but sensor availability varies. This is a *monitored-network* statistic, not a population-weighted exposure estimate.
-- The comparison view uses matching dates for all selected sensors; missing values are not silently filled.
-- The PM₂.₅/NO₂ correlation view matches the two pollutants within one sensor and day, and is descriptive only.
-- The latest-hour map picks a single hour with an adequate cohort of reporting PM₂.₅ sensors. Marker colors are *not* AQI.
-- Coordinates use the newest valid reported site coordinate; large reported movements are flagged. Labels are not neighborhood boundaries.
-- The source distinguishes raw from corrected fields; the website uses published `_value` fields.
-- A 21-day incremental refresh does not detect older provider deletions. Periodically run `--rebuild` if complete historical reconciliation is required.
-- No routine completeness threshold from raw hourly observations is reconstructed for the source-published daily aggregates. Do not interpret these as official compliance statistics.
-
-## When a workflow fails
-
-Look at the **Actions** run and expand the first failed step. A timeout or error from the City API can prevent a new snapshot; it doesn't mean the source website is automatically broken. The updater intentionally fails rather than committing partial daily data. An unavailable recent-hour request can retain the prior hourly snapshot with an error recorded in the manifest. Always check the measurement date before calling information current.
-
-## Costs and limitations
-
-GitHub Pages and GitHub Actions have usage, size and policy limits, and their availability can depend on account type and repository visibility. This design is intended for a small public project; increasing data size or traffic may eventually justify external object storage or a database.
+Do not recreate the repository to address API failures. GitHub Free is sufficient for this public research site; upgrading the GitHub plan does not repair City API availability.
