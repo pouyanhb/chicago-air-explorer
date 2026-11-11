@@ -9,17 +9,27 @@ Data source is public City hourly Open Air Chicago data (di9s-96ws).
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 import json
+import math
 import sys
 
 from build_data import (
     DATA_DIR, HOURLY_URL, assemble_daily, build_recent, client,
-    fetch_pages, load_daily_cache, number, write_json,
+    fetch_pages, load_daily_cache, write_json,
 )
 
 PAGE_FIELDS = "datasourceid,sensor_name,startofperiod,latitude,longitude,pm2_5concmass1hourmean_value,no2conc1hourmean_value"
 MAX_DAYS = 7  # Limit the work in each scheduled run.
 BACKTRACK_DAYS = 2
 MIN_HOURS = 18  # Full UTC calendar day has 24 expected hours.
+
+
+def raw_number(value):
+    """Keep source precision until averaging, consistent with DuckDB exporter."""
+    try:
+        n = float(value)
+        return n if math.isfinite(n) and n >= 0 else None
+    except (TypeError, ValueError):
+        return None
 
 
 def day_data(rows, day):
@@ -36,8 +46,8 @@ def day_data(rows, day):
             raise RuntimeError(f"Provider duplicate hourly key {key}")
         seen.add(key)
         d = byid[sid]
-        p = number(r.get("pm2_5concmass1hourmean_value"))
-        n = number(r.get("no2conc1hourmean_value"))
+        p = raw_number(r.get("pm2_5concmass1hourmean_value"))
+        n = raw_number(r.get("no2conc1hourmean_value"))
         if p is not None:
             d["pm"].append(p)
         if n is not None:
