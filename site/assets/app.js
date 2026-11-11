@@ -22,14 +22,14 @@
     wireControls(); setupMap();
     try {
       const [d,m] = await Promise.all([loadJson('data/daily.json'),loadJson('data/manifest.json')]);
-      if (d.version!==1 || !Array.isArray(d.rows) || !d.rows.length) throw new Error('Published daily readings not yet available.');
+      if (d.version!==1 || !Array.isArray(d.rows) || !d.rows.length) throw new Error('Historical site data have not been imported yet.');
       state.daily=d;state.manifest=m;
       try { state.recent=await loadJson('data/recent.json'); } catch(_){ state.recent=null; }
       prepareIndexes(); chooseExamples(); refreshAll();
       const age=(Date.now()-new Date(m.generated_at).getTime())/3600000;
       $('feedStatus').textContent=age>36?'Update is overdue':'Public data connected';
       $('feedDate').textContent=`Latest UTC day: ${m.latest_utc_day||'unknown'}`;
-      $('timestampTop').textContent=`Latest published UTC day: ${m.latest_utc_day||'unknown'}`;
+      $('timestampTop').textContent=`Latest available UTC day: ${m.latest_utc_day||'unknown'}`;
       $('footerUpdate').textContent=`Last update check: ${new Date(m.generated_at).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'})} · Non-regulatory`;
     } catch(err) {
       $('loadError').hidden=false;
@@ -146,7 +146,7 @@
       const cntCol=state.pollutant==='pm25'?3:4;
       const threshold=Math.max(15,Math.floor(state.daily.sensors.length*.15));
       const latest=[...state.daily.network].reverse().find(r=>r[cntCol]>=threshold) || [...state.daily.network].reverse().find(r=>r[cntCol]>0);
-      if(latest){const di=latest[0];state.daily.sensors.forEach(s=>{const pair=dailyRowsForSensor(s.id).get(di);if(pair)rows.push({id:s.id,value:pair[col]});});basis=`Published UTC day: ${state.daily.dates[di]}`;}
+      if(latest){const di=latest[0];state.daily.sensors.forEach(s=>{const pair=dailyRowsForSensor(s.id).get(di);if(pair)rows.push({id:s.id,value:pair[col]});});basis=`Available UTC day: ${state.daily.dates[di]}`;}
     } else {
       const days=daysInPeriod();const eligible=Math.max(1,Math.ceil(days.length*.75));
       state.daily.sensors.forEach(s=>{const vals=days.map(i=>dailyRowsForSensor(s.id).get(i)?.[col]).filter(valid);if(vals.length>=eligible)rows.push({id:s.id,value:mean(vals),count:vals.length});});
