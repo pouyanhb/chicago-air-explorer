@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
   schedule:
-    # Every four hours; the public City feed can lag by days.
-    - cron: '17 */4 * * *'
+    # The City data often lags; twice daily is sufficient.
+    - cron: '23 5,17 * * *'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   update-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 30
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -29,22 +29,26 @@ jobs:
         with:
           persist-credentials: true
       - uses: actions/setup-python@v5
+        if: github.event_name != 'push'
         with:
           python-version: '3.12'
       - name: Install API client
+        if: github.event_name != 'push'
         run: pip install -r scripts/requirements.txt
-      - name: Retrieve and process City data
+      - name: Refresh a limited range of completed UTC days
+        if: github.event_name != 'push'
         env:
           SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
-        run: python scripts/build_data.py
-      - name: Save published aggregate snapshots
+        run: python scripts/refresh_hourly.py
+      - name: Save updated public summaries
+        if: github.event_name != 'push'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add site/data
           if ! git diff --cached --quiet; then
-            git commit -m "data: refresh Open Air Chicago published aggregates"
+            git commit -m "data: refresh published Chicago hourly summaries"
             git push
           fi
       - uses: actions/configure-pages@v5
