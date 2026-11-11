@@ -1,0 +1,15 @@
+# Keep local analyses, sensitive files, and whole databases off the public site.
+*.db
+*.duckdb
+*.sqlite
+*.sqlite3
+*.db.wal
+*.ipynb
+.env
+.env.*
+!/.env.example
+__pycache__/
+.pytest_cache/
+.venv/
+.DS_Store
+*.tmp
