@@ -22,13 +22,13 @@ The exporter calculates an **hourly-derived UTC calendar-day mean** for a sensor
 The [workflow](../.github/workflows/update-and-deploy.yml) runs on code pushes and twice per day on a schedule. Code pushes **only deploy the existing site**. Scheduled/manual runs execute [`refresh_hourly.py`](../scripts/refresh_hourly.py), which:
 
 1. Checks for the initial `site/data/daily.json` seed. If it is missing, exits cleanly without attempting a full download.
-2. Rechecks two prior UTC dates and fetches **up to seven completed UTC days per run**, one day at a time from the City's [public hourly API](https://data.cityofchicago.org/d/di9s-96ws).
+2. Rechecks two previously scanned UTC dates while catching up, and fetches **up to seven completed UTC days per run**, one day at a time from the City's [public hourly API](https://data.cityofchicago.org/d/di9s-96ws).
 3. Uses exactly the same 18-valid-hour per pollutant UTC-day mean rule as the initial archive export.
 4. Preserves older sensor-days and incorporates newly eligible/revised readings; an API failure stops further daily requests without throwing away already fetched complete days.
 5. Attempts a short recent-hour map update. A failure in that optional request leaves the last valid recent snapshot and records a warning in the manifest.
 6. Commits updated public JSON and deploys the website. The source's own publication delay is not reduced by more frequent polling.
 
-Because only seven days are checked per run, it can take several runs to catch up after a long source delay. Older source deletions and corrections outside the overlap are not automatically reconciled. Do not interpret this website as live or a regulatory air-quality warning service.
+Because only seven days are checked per run, it can take several runs to catch up after a long source delay. Once caught up, the cursor cycles through approximately the most recent 14 UTC days. Older source deletions and corrections outside the revisit window are not automatically reconciled. Do not interpret this website as live or a regulatory air-quality warning service.
 
 ## Output files
 
